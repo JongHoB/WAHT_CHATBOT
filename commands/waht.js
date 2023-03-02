@@ -133,7 +133,7 @@ const eventsFunction = async (interaction) => {
 
       const result = rowBuilder(rows);
 
-      const embed = listEmbed(fields, rows.length);
+      const embed = listEmbed(fields, rows.length, `Events List For You`);
 
       await interaction.editReply({
         embeds: [embed],
@@ -185,6 +185,47 @@ const refreshFunction = async (interaction) => {
   }
 };
 
+//"/waht rsvp" 명령 시 실행 함수
+const rsvpFunction = async (interaction) => {
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const data = await userCheck(interaction);
+
+    if (data.status == 200) {
+      const { data } = await axios(
+        `http://${process.env.SERVER_URL}/rsvp/list?id=${
+          interaction.user.id
+        }&timestamp=${changeToUTC(interaction.createdTimestamp)}`
+      );
+
+      const converted = changeTimeFormat(data.list);
+
+      const fields = createListFields(converted);
+
+      const rows = createRowFields(data.list);
+
+      const result = rowBuilder(rows);
+
+      const embed = listEmbed(fields, rows.length, `Event lists you RSVP'd`);
+
+      await interaction.editReply({
+        embeds: [embed],
+        components: [result, visitWahtButton],
+      });
+    } else {
+      await interaction.editReply({
+        content: `You don't have any records.`,
+      });
+    }
+  } catch (error) {
+    if (error.response.status == 401) {
+      await interaction.editReply({
+        content: `Please authenticate your account`,
+      });
+    }
+  }
+};
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('waht')
@@ -199,6 +240,9 @@ module.exports = {
     )
     .addSubcommand((subcommand) =>
       subcommand.setName('refresh').setDescription('Updating your NFTs')
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName('rsvp').setDescription(`Show events which you RSVP'd`)
     ),
   async execute(interaction) {
     //"/waht check" 명령 시
@@ -210,6 +254,8 @@ module.exports = {
       //"waht refresh" 명령 시
     } else if (interaction.options.getSubcommand() === 'refresh') {
       await refreshFunction(interaction);
+    } else if (interaction.options.getSubcommand() === 'rsvp') {
+      await rsvpFunction(interaction);
     }
   },
 };
