@@ -11,159 +11,219 @@ const { visitWahtButton } = require('../utils/rsvpButton');
 const { qrImageGenerator } = require('../utils/qrImageGenerator');
 const log = require('../config/logger');
 
+//user login 확인
+const userCheck = async (interaction) => {
+  try {
+    const data = await axios(
+      `http://${process.env.SERVER_URL}/check?id=${interaction.user.id}`
+    );
+    return data;
+  } catch (err) {
+    throw err;
+  }
+};
+
 //"/waht check" 명령 시 실행 함수
 const checkFunction = async (interaction) => {
-  await axios(
-    `http://${process.env.SERVER_URL}/check?id=${interaction.user.id}`
-  )
-    .then(async (data) => {
-      if (data.status == 200) {
-        await interaction.reply({
-          content: `You are authenticated!`,
-          ephemeral: true,
-        });
-      }
-    })
-    .catch(async (err) => {
-      if (err.response.status == 401) {
-        const client = new WalletConnect({
-          bridge: 'https://bridge.walletconnect.org',
-        });
+  try {
+    const data = await userCheck(interaction);
 
-        await client.createSession();
+    if (data.status == 200) {
+      await interaction.reply({
+        content: `You are authenticated!`,
+        ephemeral: true,
+      });
+    }
+  } catch (err) {
+    if (err.response.status == 401) {
+      const client = new WalletConnect({
+        bridge: 'https://bridge.walletconnect.org',
+      });
 
-        client.on('session_update', async (error, payload) => {
-          if (error) {
-            log.error(error);
-            throw error;
-          }
-          const { event } = payload;
-          if (event === 'disconnected') {
-            log.info('User disconnected');
-            await client.killSession();
-          }
-        });
+      await client.createSession();
 
-        const sessionId = Math.floor(Math.random() * 1000000);
-        client.sessionId = sessionId;
+      client.on('session_update', async (error, payload) => {
+        if (error) {
+          log.error(error);
+          throw error;
+        }
+        const { event } = payload;
+        if (event === 'disconnected') {
+          log.info('User disconnected');
+          await client.killSession();
+        }
+      });
 
-        const uri = client.uri + '&sessionId=' + sessionId;
+      const sessionId = Math.floor(Math.random() * 1000000);
+      client.sessionId = sessionId;
 
-        await qrImageGenerator(uri, 'qrImage.png');
+      const uri = client.uri + '&sessionId=' + sessionId;
 
-        await interaction.reply({
-          content: `Please connect your wallet using this link:`,
-          files: [{ attachment: './qrImage.png', name: 'WalletConnect.png' }],
-          ephemeral: true,
-        });
+      await qrImageGenerator(uri, 'qrImage.png');
 
-        await new Promise((resolve) => {
-          client.on('connect', resolve);
-        });
+      await interaction.reply({
+        content: `Please connect your wallet using this link:`,
+        files: [{ attachment: './qrImage.png', name: 'WalletConnect.png' }],
+        ephemeral: true,
+      });
 
-        await interaction.deleteReply();
+      await new Promise((resolve) => {
+        client.on('connect', resolve);
+      });
 
-        const accounts = await client.sendCustomRequest({
-          method: 'eth_accounts',
-          params: [],
-        });
+      await interaction.deleteReply();
 
-        //기존 qr code로 재인증 막기
-        const checkAddress = [];
+      const accounts = await client.sendCustomRequest({
+        method: 'eth_accounts',
+        params: [],
+      });
 
-        await client.killSession();
+      //기존 qr code로 재인증 막기
+      const checkAddress = [];
 
-        if (checkAddress.length == 0) {
-          await checkAddress.push(accounts[0]);
-          await axios
-            .post(
-              `http://${process.env.SERVER_URL}/check?id=${interaction.user.id}`,
-              {
-                walletAddress: accounts[0],
-              }
-            )
-            .then(async (data) => {
-              if (data.status == 201) {
-                await interaction.followUp({
-                  content: `You are now authenticated!`,
-                  ephemeral: true,
-                });
-              }
-            })
-            .catch(async (err) => {
-              log.error(err);
+      await client.killSession();
+
+      if (checkAddress.length == 0) {
+        await checkAddress.push(accounts[0]);
+        await axios
+          .post(
+            `http://${process.env.SERVER_URL}/check?id=${interaction.user.id}`,
+            {
+              walletAddress: accounts[0],
+            }
+          )
+          .then(async (data) => {
+            if (data.status == 201) {
               await interaction.followUp({
-                content: `There was an error processing your request. Please try again later`,
+                content: `You are now authenticated!`,
                 ephemeral: true,
               });
+            }
+          })
+          .catch(async (err) => {
+            log.error(err);
+            await interaction.followUp({
+              content: `There was an error processing your request. Please try again later`,
+              ephemeral: true,
             });
-        }
+          });
       }
-    });
+    }
+  }
 };
 
 //"/waht events" 명령 시 실행 함수
 const eventsFunction = async (interaction) => {
   await interaction.deferReply({ ephemeral: true });
+  try {
+    const data = await userCheck(interaction);
 
-  await axios(
-    `http://${process.env.SERVER_URL}/check?id=${interaction.user.id}`
-  )
-    .then(async (data) => {
-      if (data.status == 200) {
-        //axios 먼저
-        const { data } = await axios(
-          `http://${process.env.SERVER_URL}/events/list?id=${
-            interaction.user.id
-          }&timestamp=${changeToUTC(interaction.createdTimestamp)}`
-        );
+    if (data.status == 200) {
+      const { data } = await axios(
+        `http://${process.env.SERVER_URL}/events/list?id=${
+          interaction.user.id
+        }&timestamp=${changeToUTC(interaction.createdTimestamp)}`
+      );
 
-        const converted = changeTimeFormat(data.data);
+      const converted = changeTimeFormat(data.data);
 
-        const fields = createListFields(converted);
+      const fields = createListFields(converted);
 
-        const rows = createRowFields(data.data);
+      const rows = createRowFields(data.data);
 
-        const result = rowBuilder(rows);
+      const result = rowBuilder(rows);
 
-        const embed = listEmbed(fields, rows.length);
+      const embed = listEmbed(fields, rows.length, `Events List For You`);
 
-        await interaction.editReply({
-          embeds: [embed],
-          components: [result, visitWahtButton],
-        });
-      } else {
-        await interaction.editReply({
-          content: `You don't have any nfts.`,
-        });
-      }
-    })
-    .catch(async (error) => {
-      if (error.response.status == 401) {
-        await interaction.editReply({
-          content: `Please authenticate your account`,
-        });
-      }
-    });
+      await interaction.editReply({
+        embeds: [embed],
+        components: [result, visitWahtButton],
+      });
+    } else {
+      await interaction.editReply({
+        content: `You don't have any nfts.`,
+      });
+    }
+  } catch (error) {
+    if (error.response.status == 401) {
+      await interaction.editReply({
+        content: `Please authenticate your account`,
+      });
+    }
+  }
 };
 
 //"/waht refresh" 명령 시 실행 함수
 const refreshFunction = async (interaction) => {
   await interaction.deferReply({ ephemeral: true });
+  try {
+    const data = await userCheck(interaction);
 
-  await axios
-    .patch(`http://${process.env.SERVER_URL}/check?id=${interaction.user.id}`)
-    .then(
+    if (data.status == 200) {
+      await axios
+        .patch(
+          `http://${process.env.SERVER_URL}/check?id=${interaction.user.id}`
+        )
+        .then(
+          await interaction.editReply({
+            content: 'Your NFT records have been updated',
+          })
+        )
+        .catch(async (err) => {
+          log.error(err);
+          await interaction.editReply({
+            content: `There was an error processing your request. Please try again later`,
+          });
+        });
+    }
+  } catch (error) {
+    if (error.response.status == 401) {
       await interaction.editReply({
-        content: 'Your NFT records have been updated',
-      })
-    )
-    .catch(async (err) => {
-      log.error(err);
-      await interaction.editReply({
-        content: `There was an error processing your request. Please try again later`,
+        content: `Please authenticate your account`,
       });
-    });
+    }
+  }
+};
+
+//"/waht rsvp" 명령 시 실행 함수
+const rsvpFunction = async (interaction) => {
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const data = await userCheck(interaction);
+
+    if (data.status == 200) {
+      const { data } = await axios(
+        `http://${process.env.SERVER_URL}/rsvp/list?id=${
+          interaction.user.id
+        }&timestamp=${changeToUTC(interaction.createdTimestamp)}`
+      );
+
+      const converted = changeTimeFormat(data.list);
+
+      const fields = createListFields(converted);
+
+      const rows = createRowFields(data.list);
+
+      const result = rowBuilder(rows);
+
+      const embed = listEmbed(fields, rows.length, `Event lists you RSVP'd`);
+
+      await interaction.editReply({
+        embeds: [embed],
+        components: [result, visitWahtButton],
+      });
+    } else {
+      await interaction.editReply({
+        content: `You don't have any records.`,
+      });
+    }
+  } catch (error) {
+    if (error.response.status == 401) {
+      await interaction.editReply({
+        content: `Please authenticate your account`,
+      });
+    }
+  }
 };
 
 module.exports = {
@@ -180,6 +240,9 @@ module.exports = {
     )
     .addSubcommand((subcommand) =>
       subcommand.setName('refresh').setDescription('Updating your NFTs')
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName('rsvp').setDescription(`Show events which you RSVP'd`)
     ),
   async execute(interaction) {
     //"/waht check" 명령 시
@@ -191,6 +254,8 @@ module.exports = {
       //"waht refresh" 명령 시
     } else if (interaction.options.getSubcommand() === 'refresh') {
       await refreshFunction(interaction);
+    } else if (interaction.options.getSubcommand() === 'rsvp') {
+      await rsvpFunction(interaction);
     }
   },
 };
