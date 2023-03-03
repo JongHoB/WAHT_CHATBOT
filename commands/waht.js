@@ -145,6 +145,12 @@ const eventsFunction = async (interaction) => {
       });
     }
   } catch (error) {
+    if (error.response.status == 404) {
+      await interaction.editReply({
+        content: `Couldn't find a list of events that match your smart contract address.`,
+      });
+    }
+
     if (error.response.status == 401) {
       await interaction.editReply({
         content: `Please authenticate your account`,
@@ -221,6 +227,12 @@ const rsvpFunction = async (interaction) => {
     if (error.response.status == 401) {
       await interaction.editReply({
         content: `Please authenticate your account`,
+      });
+    }
+
+    if (error.response.status == 404) {
+      await interaction.editReply({
+        content: `You haven't RSVP'd to any events.`,
       });
     }
   }
