@@ -17,23 +17,28 @@ const client = new Client({
 
 //client command 설정
 client.commands = new Collection();
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs
-  .readdirSync(commandsPath)
-  .filter((file) => file.endsWith('.js'));
 
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = require(filePath);
+const loadCommands = () => {
+  const commandsPath = path.join(__dirname, 'commands');
+  const commandFiles = fs
+    .readdirSync(commandsPath)
+    .filter((file) => file.endsWith('.js'));
 
-  if ('data' in command && 'execute' in command) {
-    client.commands.set(command.data.name, command);
-  } else {
-    log.error(
-      `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`
-    );
+  for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    const command = require(filePath);
+
+    if ('data' in command && 'execute' in command) {
+      client.commands.set(command.data.name, command);
+    } else {
+      log.error(
+        `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`
+      );
+    }
   }
-}
+};
+
+loadCommands();
 
 //client event설정
 const eventsPath = path.join(__dirname, 'events');
@@ -52,3 +57,5 @@ for (const file of eventFiles) {
 }
 
 client.login(process.env.TOKEN);
+
+module.exports = { client, loadCommands };
